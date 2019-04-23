@@ -1,0 +1,73 @@
+name: edgex-device-random
+base: core18
+version: "replace-me"
+version-script: |
+  echo $(cat VERSION)-$(date +%Y%m%d)+$(git rev-parse --short HEAD)
+summary: Random number generating device-service with EdgeX Foundry
+description: |
+  This Device Service is a reference example of a Device Service developed 
+  with the [Go Device Service SDK](https://github.com/edgexfoundry/device-sdk-go)
+
+grade: stable
+confinement: strict
+
+apps:
+  device-random:
+    command: bin/go-service-wrapper.sh device-random
+    daemon: simple
+    restart-condition: always
+    plugs: [network, network-bind]
+
+
+parts:
+  ci-snaps-common:
+    plugin: dump
+    source: https://github.com/anonymouse64/ci-snaps-common.git
+    source-branch: feature/initial
+    stage:
+      - bin/*
+    prime:
+      - bin/go-service-wrapper.sh
+  go:
+    plugin: nil
+    source: https://go.googlesource.com/go
+    source-type: git
+    source-tag: go1.11.2
+    source-depth: 1
+    build-packages: [golang-go, g++]
+    override-build: |
+      cd src && env GOROOT_BOOTSTRAP=$(go env GOROOT | tr -d '\n') GO111MODULE=off ./make.bash
+      cd ..
+      cp -R bin $SNAPCRAFT_PART_INSTALL
+    stage:
+      - "bin"
+    prime:
+      - "-*"
+    after: [ci-snaps-common]
+  device-random:
+    source: .
+    plugin: make
+    after: [go]
+    override-build: |
+      cd $SNAPCRAFT_PART_SRC
+      make build
+
+      install -DT "./cmd/device-random" "$SNAPCRAFT_PART_INSTALL/bin/device-random"
+
+      # FIXME: settings can't be overridden from the cmd-line!
+      # Override 'LogFile'
+      install -d "$SNAPCRAFT_PART_INSTALL/config/device-random/res/"
+
+      # install configuratin & default device profile
+      cat "./cmd/res/configuration.toml" | \
+        sed -e s:\"./device-random.log\":\'\$SNAP_COMMON/device-random.log\': > \
+        "$SNAPCRAFT_PART_INSTALL/config/device-random/res/configuration.toml"
+
+      install -T "./cmd/res/device.random.yaml" \
+        "$SNAPCRAFT_PART_INSTALL/config/device-random/res/device.random.yaml"
+
+      install -DT "./cmd/Attribution.txt" \
+         "$SNAPCRAFT_PART_INSTALL/usr/share/doc/device-random/Attribution.txt"
+      install -DT "./LICENSE" \
+         "$SNAPCRAFT_PART_INSTALL/usr/share/doc/device-random/LICENSE"
+
